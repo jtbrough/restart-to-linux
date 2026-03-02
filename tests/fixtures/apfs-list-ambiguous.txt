@@ -1,0 +1,11 @@
+APFS Containers (2 found)
+|
++-- Container disk2
+|   +-> Volume disk2s2
+|   |   APFS Volume Disk (Role):   disk2s2 (System)
+|   |   Mount Point:               /Volumes/Arch Linux
+|
++-- Container disk5
+    +-> Volume disk5s2
+    |   APFS Volume Disk (Role):   disk5s2 (System)
+    |   Mount Point:               /Volumes/Fedora Asahi Remix

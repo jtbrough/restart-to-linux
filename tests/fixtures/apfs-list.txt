@@ -1,0 +1,45 @@
+APFS Containers (4 found)
+|
++-- Container disk2 AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE
+|   ====================================================
+|   APFS Container Reference:     disk2
+|   Size (Capacity Ceiling):      2499805184 B (2.5 GB)
+|   Capacity In Use By Volumes:   1021165568 B (1.0 GB) (40.8% used)
+|   Capacity Not Allocated:       1478639616 B (1.5 GB) (59.2% free)
+|   |
+|   +-< Physical Store disk0s3 ACD28220-0A9D-45AA-95D8-B7D191F7E06E
+|   |   -----------------------------------------------------------
+|   |   APFS Physical Store Disk:   disk0s3
+|   |   Size:                       2499805184 B (2.5 GB)
+|   |
+|   +-> Volume disk2s1 E6A5420A-971B-435F-97BC-F8FC438B7204
+|   |   ---------------------------------------------------
+|   |   APFS Volume Disk (Role):   disk2s1 (Data)
+|   |   Name:                      Arch Linux - Data (Case-insensitive)
+|   |   Mount Point:               /Volumes/Arch Linux - Data
+|   |
+|   +-> Volume disk2s2 262C916D-A168-4115-B340-71DD548A6D19
+|   |   ---------------------------------------------------
+|   |   APFS Volume Disk (Role):   disk2s2 (System)
+|   |   Name:                      Arch Linux (Case-insensitive)
+|   |   Mount Point:               /Volumes/Arch Linux
+|   |
+|   +-> Volume disk2s3 1DBC75F9-E65C-4324-B1BE-18A336D19B8E
+|   |   ---------------------------------------------------
+|   |   APFS Volume Disk (Role):   disk2s3 (Preboot)
+|   |   Name:                      Preboot (Case-insensitive)
+|   |   Mount Point:               Not Mounted
+|   |
+|   +-> Volume disk2s4 220484D3-03A1-42CB-A831-E2ADC905B009
+|       ---------------------------------------------------
+|       APFS Volume Disk (Role):   disk2s4 (Recovery)
+|       Name:                      Recovery (Case-insensitive)
+|       Mount Point:               Not Mounted
+|
++-- Container disk4 FFFFFFFF-1111-2222-3333-444444444444
+    ====================================================
+    APFS Container Reference:     disk4
+    |
+    +-> Volume disk4s1 EDB9DE52-AF8D-4ED8-8264-9D4512F25A1D
+    |   APFS Volume Disk (Role):   disk4s1 (System)
+    |   Mount Point:               Not Mounted

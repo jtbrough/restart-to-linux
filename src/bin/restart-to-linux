@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -eu
+
+SELF_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if [ -f "$SELF_DIR/../libexec/restart-to-linux-common" ]; then
+  # Source tree / relocatable install layout.
+  # shellcheck source=../libexec/restart-to-linux-common
+  . "$SELF_DIR/../libexec/restart-to-linux-common"
+elif [ -f "$SELF_DIR/../share/restart-to-linux/libexec/restart-to-linux-common" ]; then
+  # Prefix install layout.
+  # shellcheck source=/dev/null
+  . "$SELF_DIR/../share/restart-to-linux/libexec/restart-to-linux-common"
+else
+  echo "restart-to-linux: unable to locate support files" >&2
+  exit 1
+fi
+
+main "$@"

@@ -1,0 +1,605 @@
+#!/bin/sh
+
+set -eu
+
+SCRIPT_NAME=${SCRIPT_NAME:-restart-to-linux}
+APFS_LIST_FILE=${RESTART_TO_LINUX_APFS_LIST_FILE:-}
+DEBUG=${RESTART_TO_LINUX_DEBUG:-0}
+DEBUG_LOG_FILE=${RESTART_TO_LINUX_DEBUG_LOG_FILE:-}
+ALLOW_ANY_MOUNT=${RESTART_TO_LINUX_ALLOW_ANY_MOUNT:-0}
+APP_INSTALL_DIR=${RESTART_TO_LINUX_APP_INSTALL_DIR:-"$HOME/Applications"}
+APP_NAME="Restart to Linux.app"
+
+find_project_root() {
+  base_dir=${1:?}
+
+  if [ -f "$base_dir/../../VERSION" ]; then
+    dirname -- "$(dirname -- "$base_dir")"
+    return
+  fi
+
+  if [ -f "$base_dir/../share/restart-to-linux/VERSION" ]; then
+    printf '%s\n' "$base_dir/../share/restart-to-linux"
+    return
+  fi
+
+  printf '%s\n' "$base_dir/.."
+}
+
+BASE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_ROOT=$(find_project_root "$BASE_DIR")
+
+read_version() {
+  if [ -f "$PROJECT_ROOT/VERSION" ]; then
+    cat "$PROJECT_ROOT/VERSION"
+    return
+  fi
+
+  echo "0.0.0"
+}
+
+VERSION=$(read_version)
+
+find_applescript_source() {
+  if [ -f "$PROJECT_ROOT/src/applescript/restart-to-linux.applescript" ]; then
+    printf '%s\n' "$PROJECT_ROOT/src/applescript/restart-to-linux.applescript"
+    return
+  fi
+
+  if [ -f "$PROJECT_ROOT/restart-to-linux.applescript" ]; then
+    printf '%s\n' "$PROJECT_ROOT/restart-to-linux.applescript"
+    return
+  fi
+
+  printf '%s\n' ""
+}
+
+find_icon_source() {
+  if [ -f "$PROJECT_ROOT/packaging/macos/AsahiLinux.icns" ]; then
+    printf '%s\n' "$PROJECT_ROOT/packaging/macos/AsahiLinux.icns"
+    return
+  fi
+
+  if [ -f "$PROJECT_ROOT/AsahiLinux.icns" ]; then
+    printf '%s\n' "$PROJECT_ROOT/AsahiLinux.icns"
+    return
+  fi
+
+  printf '%s\n' ""
+}
+
+installed_app_path() {
+  printf '%s/%s\n' "$APP_INSTALL_DIR" "$APP_NAME"
+}
+
+validate_target_path() {
+  target_path=${1:?}
+
+  [ -d "$target_path" ] || die "target is not a mounted directory: $target_path"
+
+  if [ "${RESTART_TO_LINUX_ALLOW_ANY_MOUNT:-0}" = "1" ]; then
+    return
+  fi
+
+  case "$target_path" in
+    /Volumes/*)
+      ;;
+    *)
+      die "target must be a mounted volume under /Volumes: $target_path"
+      ;;
+  esac
+}
+
+usage() {
+  cat <<EOF
+Usage: $SCRIPT_NAME [options]
+
+Restart the current Mac into an Asahi Linux target selected with bless(8).
+
+Options:
+  --check             Validate the local macOS environment.
+  --list              List candidate mounted targets.
+  --target PATH       Use a specific mounted volume path.
+  --dry-run           Resolve the target and print the command without changing boot state.
+  --bless-only        Set the next boot target without rebooting immediately.
+  --install-app       Build and install the Finder/Spotlight app in ~/Applications.
+  --uninstall-app     Remove the installed Finder/Spotlight app from ~/Applications.
+  --debug             Enable verbose debug logging.
+  --debug-log PATH    Write debug logs to PATH.
+  --version           Print version and exit.
+  --help              Show this help text and exit.
+EOF
+}
+
+die() {
+  debug_log "fatal: $*"
+  echo "$SCRIPT_NAME: $*" >&2
+  exit 1
+}
+
+debug_log() {
+  [ "$DEBUG" = "1" ] || return 0
+
+  timestamp=$(date +"%Y-%m-%d %H:%M:%S")
+  line="[$timestamp] $*"
+
+  if [ -n "$DEBUG_LOG_FILE" ]; then
+    printf '%s\n' "$line" >>"$DEBUG_LOG_FILE"
+  else
+    printf '%s\n' "$line" >&2
+  fi
+}
+
+need_command() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+ensure_macos() {
+  os_name=$(uname -s 2>/dev/null || true)
+  [ "$os_name" = "Darwin" ] || die "this command only supports macOS"
+}
+
+require_root() {
+  [ "$(id -u)" -eq 0 ] || die "run with sudo for bless/reboot operations"
+}
+
+list_candidates() {
+  if [ -n "$APFS_LIST_FILE" ]; then
+    debug_log "using APFS fixture: $APFS_LIST_FILE"
+  else
+    debug_log "querying live APFS state with diskutil apfs list"
+  fi
+
+  if [ -n "$APFS_LIST_FILE" ]; then
+    cat "$APFS_LIST_FILE"
+  else
+    diskutil apfs list 2>/dev/null
+  fi | awk -v allow_any_mount="$ALLOW_ANY_MOUNT" '
+    /APFS Volume Disk \(Role\):/ {
+      role = $0
+      sub(/^.*\(/, "", role)
+      sub(/\)[[:space:]]*$/, "", role)
+    }
+    /Mount Point:/ {
+      mount_point = $0
+      sub(/^[^:]*:[[:space:]]*/, "", mount_point)
+
+      if (role == "System" && (allow_any_mount == "1" || mount_point ~ /^\/Volumes\//)) {
+        print mount_point
+      }
+
+      role = ""
+    }
+  '
+}
+
+is_interactive_terminal() {
+  [ "${RESTART_TO_LINUX_FORCE_INTERACTIVE:-0}" = "1" ] && return 0
+  [ -t 0 ] && [ -t 1 ]
+}
+
+print_candidate_menu() {
+  candidate_lines=${1:?}
+  index=1
+  old_ifs=${IFS}
+  IFS='
+'
+
+  for line in $candidate_lines; do
+    printf '%s. %s\n' "$index" "$line" >&2
+    index=$((index + 1))
+  done
+
+  IFS=${old_ifs}
+}
+
+choose_candidate_interactively() {
+  candidate_lines=${1:?}
+  choices_file=$(mktemp)
+  trap 'rm -f "$choices_file"' EXIT HUP INT TERM
+  printf '%s\n' "$candidate_lines" >"$choices_file"
+
+  echo "Multiple Linux boot targets were found:" >&2
+  print_candidate_menu "$candidate_lines"
+
+  while true; do
+    printf 'Select target number (or press Enter to cancel): ' >&2
+    IFS= read -r selection || die "selection cancelled"
+
+    [ -n "$selection" ] || die "selection cancelled"
+
+    case "$selection" in
+      *[!0-9]*)
+        echo "Invalid selection: $selection" >&2
+        continue
+        ;;
+    esac
+
+    chosen_line=$(sed -n "${selection}p" "$choices_file")
+    if [ -n "$chosen_line" ]; then
+      rm -f "$choices_file"
+      trap - EXIT HUP INT TERM
+      debug_log "selected target interactively: $chosen_line"
+      printf '%s\n' "$chosen_line"
+      return
+    fi
+
+    echo "Selection out of range: $selection" >&2
+  done
+}
+
+pick_target() {
+  explicit_target=${1:-}
+
+  if [ -n "$explicit_target" ]; then
+    validate_target_path "$explicit_target"
+    debug_log "using explicit target: $explicit_target"
+    printf '%s\n' "$explicit_target"
+    return
+  fi
+
+  candidate_lines=$(list_candidates || true)
+  [ -n "$candidate_lines" ] || die "no candidate mounted volumes found; use --target PATH"
+  debug_log "candidate targets:"
+  old_ifs=${IFS}
+  IFS='
+'
+  for line in $candidate_lines; do
+    debug_log "  $line"
+  done
+  IFS=${old_ifs}
+
+  match_count=$(printf '%s\n' "$candidate_lines" | sed '/^$/d' | wc -l | tr -d ' ')
+
+  if [ "$match_count" -ne 1 ]; then
+    if is_interactive_terminal; then
+      choose_candidate_interactively "$candidate_lines"
+      return
+    fi
+
+    echo "Candidate targets:" >&2
+    printf '%s\n' "$candidate_lines" >&2
+    die "automatic target selection is ambiguous; use --target PATH"
+  fi
+
+  debug_log "selected target: $candidate_lines"
+  printf '%s\n' "$candidate_lines"
+}
+
+run_check() {
+  ensure_macos
+  need_command bless
+  need_command diskutil
+  need_command mount
+  need_command shutdown
+  need_command uname
+  need_command id
+  debug_log "environment check succeeded"
+  echo "OK: macOS environment looks usable."
+}
+
+run_list() {
+  ensure_macos
+
+  if ! candidate_lines=$(list_candidates 2>/dev/null); then
+    die "no candidate mounted volumes found"
+  fi
+
+  debug_log "listing candidates"
+  printf '%s\n' "$candidate_lines" | sed '/^$/d'
+}
+
+run_install_app() {
+  ensure_macos
+  need_command codesign
+
+  applescript_source=$(find_applescript_source)
+  [ -n "$applescript_source" ] || die "unable to locate app chooser source"
+
+  icon_source=$(find_icon_source)
+  install_path=$(installed_app_path)
+  temp_dir=$(mktemp -d)
+  temp_app="$temp_dir/$APP_NAME"
+  app_contents="$temp_app/Contents"
+  app_macos="$app_contents/MacOS"
+  app_resources="$app_contents/Resources"
+  repo_fallback="$PROJECT_ROOT/src/bin/restart-to-linux"
+
+  trap 'rm -rf "$temp_dir"' EXIT HUP INT TERM
+
+  mkdir -p "$app_macos" "$app_resources"
+
+  cat >"$app_contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>restart-to-linux-app</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.jtbrough.restart-to-linux</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>Restart to Linux</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$VERSION</string>
+EOF
+  if [ -n "$icon_source" ]; then
+    cat >>"$app_contents/Info.plist" <<EOF
+  <key>CFBundleIconFile</key>
+  <string>AsahiLinux</string>
+EOF
+  fi
+  cat >>"$app_contents/Info.plist" <<EOF
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+</dict>
+</plist>
+EOF
+
+  printf 'APPL????' >"$app_contents/PkgInfo"
+  cp "$applescript_source" "$app_resources/restart-to-linux.applescript"
+  if [ -n "$icon_source" ]; then
+    cp "$icon_source" "$app_resources/AsahiLinux.icns"
+  fi
+
+  cat >"$app_macos/restart-to-linux-app" <<'EOF'
+#!/bin/sh
+set -eu
+
+APP_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+RESOURCES_DIR=$APP_DIR/../Resources
+CHOOSER_SCRIPT=$RESOURCES_DIR/restart-to-linux.applescript
+DEBUG_LOG=/tmp/restart-to-linux-ui.log
+REPO_FALLBACK=__REPO_FALLBACK__
+
+show_dialog() {
+  /usr/bin/osascript \
+    -e 'use scripting additions' \
+    -e 'on run argv' \
+    -e 'display dialog (item 1 of argv) buttons {"OK"} default button "OK"' \
+    -e 'end run' \
+    -- "$1" >/dev/null
+}
+
+shell_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+find_tool() {
+  if [ -x /opt/homebrew/bin/restart-to-linux ]; then
+    printf '%s\n' /opt/homebrew/bin/restart-to-linux
+    return
+  fi
+
+  if [ -x /usr/local/bin/restart-to-linux ]; then
+    printf '%s\n' /usr/local/bin/restart-to-linux
+    return
+  fi
+
+  if [ -x "$REPO_FALLBACK" ]; then
+    printf '%s\n' "$REPO_FALLBACK"
+    return
+  fi
+
+  return 1
+}
+
+tool_path=$(find_tool || true)
+if [ -z "$tool_path" ]; then
+  show_dialog "restart-to-linux is not installed."
+  exit 1
+fi
+
+list_err=$(mktemp /tmp/restart-to-linux-ui-list.XXXXXX.err)
+choose_err=$(mktemp /tmp/restart-to-linux-ui-choose.XXXXXX.err)
+trap 'rm -f "$list_err" "$choose_err"' EXIT HUP INT TERM
+
+if ! candidate_output=$("$tool_path" --list 2>"$list_err"); then
+  error_text=$(cat "$list_err" 2>/dev/null || true)
+  [ -n "$error_text" ] || error_text="No Linux boot targets were found."
+  show_dialog "$error_text"
+  exit 1
+fi
+
+set --
+old_ifs=$IFS
+IFS='
+'
+for candidate in $candidate_output; do
+  [ -n "$candidate" ] || continue
+  set -- "$@" "$candidate"
+done
+IFS=$old_ifs
+
+if [ "$#" -eq 0 ]; then
+  show_dialog "No Linux boot targets were found."
+  exit 1
+fi
+
+if ! target_path=$(/usr/bin/osascript "$CHOOSER_SCRIPT" "$@" 2>"$choose_err"); then
+  status=$?
+  error_text=$(cat "$choose_err" 2>/dev/null || true)
+  if [ "$status" -eq 1 ] && printf '%s' "$error_text" | /usr/bin/grep -q -- '-128'; then
+    exit 0
+  fi
+  [ -n "$error_text" ] || error_text="Target selection failed."
+  show_dialog "$error_text"
+  exit 1
+fi
+
+command_string="$(shell_quote "$tool_path") --debug-log $(shell_quote "$DEBUG_LOG") --target $(shell_quote "$target_path")"
+
+/usr/bin/osascript \
+  -e 'on run argv' \
+  -e 'set shellCommand to item 1 of argv' \
+  -e '«event sysoexec» shellCommand with «class badm»' \
+  -e 'end run' \
+  -- "$command_string"
+EOF
+
+  sed -i.bak "s|__REPO_FALLBACK__|$repo_fallback|g" "$app_macos/restart-to-linux-app"
+  rm -f "$app_macos/restart-to-linux-app.bak"
+  chmod +x "$app_macos/restart-to-linux-app"
+
+  debug_log "codesigning app bundle at $temp_app"
+  codesign --force --deep --sign - "$temp_app" >/dev/null 2>&1 || die "codesign failed for app bundle"
+
+  mkdir -p "$APP_INSTALL_DIR"
+  rm -rf "$install_path"
+  cp -R "$temp_app" "$install_path"
+
+  rm -rf "$temp_dir"
+  trap - EXIT HUP INT TERM
+  echo "Installed app: $install_path"
+}
+
+run_uninstall_app() {
+  install_path=$(installed_app_path)
+  rm -rf "$install_path"
+  echo "Removed app: $install_path"
+}
+
+run_bless() {
+  target_path=${1:?}
+  bless_only=${2:?}
+  dry_run=${3:?}
+
+  ensure_macos
+  need_command bless
+  validate_target_path "$target_path"
+
+  if [ "$dry_run" = "1" ]; then
+    debug_log "dry run: bless --mount $target_path --setBoot"
+    echo "Would run: bless --mount \"$target_path\" --setBoot"
+    if [ "$bless_only" != "1" ]; then
+      echo "Would then run: shutdown -r now"
+    fi
+    return
+  fi
+
+  require_root
+  debug_log "executing: bless --mount $target_path --setBoot"
+  bless --mount "$target_path" --setBoot
+
+  if [ "$bless_only" = "1" ]; then
+    debug_log "bless completed without reboot"
+    echo "Configured next boot target: $target_path"
+    return
+  fi
+
+  need_command shutdown
+  debug_log "executing: shutdown -r now"
+  echo "Configured next boot target: $target_path"
+  echo "Rebooting now..."
+  shutdown -r now
+}
+
+main() {
+  bless_only=0
+  dry_run=0
+  target_path=
+  action=run
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --check)
+        action=check
+        shift
+        ;;
+      --list)
+        action=list
+        shift
+        ;;
+      --target)
+        [ "$#" -ge 2 ] || die "--target requires a mounted volume path"
+        target_path=$2
+        shift 2
+        ;;
+      --dry-run)
+        dry_run=1
+        shift
+        ;;
+      --bless-only)
+        bless_only=1
+        shift
+        ;;
+      --install-app)
+        action=install_app
+        shift
+        ;;
+      --uninstall-app)
+        action=uninstall_app
+        shift
+        ;;
+      --debug)
+        DEBUG=1
+        shift
+        ;;
+      --debug-log)
+        [ "$#" -ge 2 ] || die "--debug-log requires a file path"
+        DEBUG=1
+        DEBUG_LOG_FILE=$2
+        shift 2
+        ;;
+      --version)
+        action=version
+        shift
+        ;;
+      --help)
+        action=help
+        shift
+        ;;
+      *)
+        die "unknown option: $1"
+        ;;
+    esac
+  done
+
+  if [ "$DEBUG" = "1" ] && [ -n "$DEBUG_LOG_FILE" ]; then
+    : >"$DEBUG_LOG_FILE"
+    debug_log "debug logging enabled"
+    debug_log "script: $SCRIPT_NAME"
+    debug_log "version: $VERSION"
+    debug_log "uid: $(id -u)"
+    debug_log "pwd: $(pwd)"
+    debug_log "apfs fixture: ${APFS_LIST_FILE:-<live diskutil>}"
+  fi
+
+  case "$action" in
+    check)
+      run_check
+      exit 0
+      ;;
+    list)
+      run_list
+      exit 0
+      ;;
+    install_app)
+      run_install_app
+      exit 0
+      ;;
+    uninstall_app)
+      run_uninstall_app
+      exit 0
+      ;;
+    version)
+      printf '%s\n' "$VERSION"
+      exit 0
+      ;;
+    help)
+      usage
+      exit 0
+      ;;
+  esac
+
+  resolved_target=$(pick_target "$target_path")
+  run_bless "$resolved_target" "$bless_only" "$dry_run"
+}
