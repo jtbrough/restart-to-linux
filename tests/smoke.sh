@@ -16,11 +16,13 @@ app_dir="$ROOT_DIR/tests/tmp-apps"
 mkdir -p "$app_dir"
 RESTART_TO_LINUX_APP_INSTALL_DIR="$app_dir" "$ROOT_DIR/src/bin/restart-to-linux" --install-app >/dev/null
 [ -d "$app_dir/Restart to Linux.app" ]
-plutil -p "$app_dir/Restart to Linux.app/Contents/Info.plist" | grep -F '"CFBundleIconFile" => "applet"' >/dev/null
-plutil -p "$app_dir/Restart to Linux.app/Contents/Info.plist" | grep -F '"LSRequiresNativeExecution" => true' >/dev/null
+icon_file=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$app_dir/Restart to Linux.app/Contents/Info.plist")
+[ "$icon_file" = "applet" ]
+native_exec=$(/usr/libexec/PlistBuddy -c "Print :LSRequiresNativeExecution" "$app_dir/Restart to Linux.app/Contents/Info.plist")
+[ "$native_exec" = "true" ]
 [ -f "$app_dir/Restart to Linux.app/Contents/Resources/restart-to-linux.applescript" ]
 [ -f "$app_dir/Restart to Linux.app/Contents/Resources/applet.icns" ]
-[ -f "$app_dir/Restart to Linux.app/Contents/MacOS/restart-to-linux-launcher" ]
+[ -x "$app_dir/Restart to Linux.app/Contents/MacOS/restart-to-linux-launcher" ]
 cmp -s "$ROOT_DIR/packaging/macos/AsahiLinux.icns" "$app_dir/Restart to Linux.app/Contents/Resources/applet.icns"
 RESTART_TO_LINUX_APP_INSTALL_DIR="$app_dir" "$ROOT_DIR/src/bin/restart-to-linux" --uninstall-app >/dev/null
 [ ! -e "$app_dir/Restart to Linux.app" ]
