@@ -16,6 +16,12 @@ app_dir="$ROOT_DIR/tests/tmp-apps"
 mkdir -p "$app_dir"
 RESTART_TO_LINUX_APP_INSTALL_DIR="$app_dir" "$ROOT_DIR/src/bin/restart-to-linux" --install-app >/dev/null
 [ -d "$app_dir/Restart to Linux.app" ]
+plutil -p "$app_dir/Restart to Linux.app/Contents/Info.plist" | grep -F '"CFBundleIconFile" => "applet"' >/dev/null
+plutil -p "$app_dir/Restart to Linux.app/Contents/Info.plist" | grep -F '"LSRequiresNativeExecution" => true' >/dev/null
+[ -f "$app_dir/Restart to Linux.app/Contents/Resources/restart-to-linux.applescript" ]
+[ -f "$app_dir/Restart to Linux.app/Contents/Resources/applet.icns" ]
+[ -f "$app_dir/Restart to Linux.app/Contents/MacOS/restart-to-linux-launcher" ]
+cmp -s "$ROOT_DIR/packaging/macos/AsahiLinux.icns" "$app_dir/Restart to Linux.app/Contents/Resources/applet.icns"
 RESTART_TO_LINUX_APP_INSTALL_DIR="$app_dir" "$ROOT_DIR/src/bin/restart-to-linux" --uninstall-app >/dev/null
 [ ! -e "$app_dir/Restart to Linux.app" ]
 RESTART_TO_LINUX_APFS_LIST_FILE="$ROOT_DIR/tests/fixtures/apfs-list.txt" \
@@ -43,7 +49,7 @@ EOF
 printf '2\n' | RESTART_TO_LINUX_FORCE_INTERACTIVE=1 \
   RESTART_TO_LINUX_ALLOW_ANY_MOUNT=1 \
   RESTART_TO_LINUX_APFS_LIST_FILE="$ROOT_DIR/tests/tmp/apfs-list-ambiguous.txt" \
-  "$ROOT_DIR/src/bin/restart-to-linux" --dry-run --bless-only | \
+  "$ROOT_DIR/src/bin/restart-to-linux" --dry-run --bless-only 2>/dev/null | \
   grep -F 'Would run: bless --mount "'$ROOT_DIR'/tests/tmp/Fedora Asahi Remix" --setBoot' >/dev/null
 RESTART_TO_LINUX_ALLOW_ANY_MOUNT=1 \
   RESTART_TO_LINUX_APFS_LIST_FILE="$ROOT_DIR/tests/fixtures/apfs-list.txt" \

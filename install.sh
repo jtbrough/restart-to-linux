@@ -23,6 +23,7 @@ install -m 0755 "$ROOT_DIR/src/libexec/restart-to-linux-common" "$LIBEXEC_DIR/re
 install -m 0644 "$ROOT_DIR/VERSION" "$SHARE_DIR/VERSION"
 install -m 0644 "$ROOT_DIR/src/applescript/restart-to-linux.applescript" "$SHARE_DIR/restart-to-linux.applescript"
 install -m 0644 "$ROOT_DIR/src/applescript/restart-to-linux-launcher.applescript" "$SHARE_DIR/restart-to-linux-launcher.applescript"
+install -m 0755 "$ROOT_DIR/src/macos/restart-to-linux-launcher.sh" "$SHARE_DIR/restart-to-linux-launcher.sh"
 if [ -f "$ROOT_DIR/packaging/macos/AsahiLinux.icns" ]; then
   install -m 0644 "$ROOT_DIR/packaging/macos/AsahiLinux.icns" "$SHARE_DIR/AsahiLinux.icns"
 fi
