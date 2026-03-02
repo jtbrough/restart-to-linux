@@ -60,6 +60,11 @@ find_launcher_applescript_source() {
     return
   fi
 
+  if [ -f "$PROJECT_ROOT/restart-to-linux-launcher.applescript" ]; then
+    printf '%s\n' "$PROJECT_ROOT/restart-to-linux-launcher.applescript"
+    return
+  fi
+
   printf '%s\n' ""
 }
 

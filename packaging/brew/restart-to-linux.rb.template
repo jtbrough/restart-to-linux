@@ -12,6 +12,7 @@ class RestartToLinux < Formula
     (share/"restart-to-linux/libexec").install "src/libexec/restart-to-linux-common"
     (share/"restart-to-linux").install "VERSION"
     (share/"restart-to-linux").install "src/applescript/restart-to-linux.applescript" => "restart-to-linux.applescript"
+    (share/"restart-to-linux").install "src/applescript/restart-to-linux-launcher.applescript" => "restart-to-linux-launcher.applescript"
     (share/"restart-to-linux").install "packaging/macos/AsahiLinux.icns" if File.exist?("packaging/macos/AsahiLinux.icns")
   end
 
