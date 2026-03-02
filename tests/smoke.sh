@@ -52,8 +52,8 @@ printf '2\n' | RESTART_TO_LINUX_FORCE_INTERACTIVE=1 \
   RESTART_TO_LINUX_ALLOW_ANY_MOUNT=1 \
   RESTART_TO_LINUX_APFS_LIST_FILE="$ROOT_DIR/tests/tmp/apfs-list-ambiguous.txt" \
   "$ROOT_DIR/src/bin/restart-to-linux" --dry-run --bless-only 2>/dev/null | \
-  grep -F 'Would run: bless --mount "'$ROOT_DIR'/tests/tmp/Fedora Asahi Remix" --setBoot' >/dev/null
+  grep -F 'Would run: bless --mount "'$ROOT_DIR'/tests/tmp/Fedora Asahi Remix" --setBoot --nextonly' >/dev/null
 RESTART_TO_LINUX_ALLOW_ANY_MOUNT=1 \
   RESTART_TO_LINUX_APFS_LIST_FILE="$ROOT_DIR/tests/fixtures/apfs-list.txt" \
   "$ROOT_DIR/src/bin/restart-to-linux" --dry-run --bless-only --target "$ROOT_DIR/tests/tmp/Arch Linux" | \
-  grep -F 'Would run: bless --mount "'$ROOT_DIR'/tests/tmp/Arch Linux" --setBoot' >/dev/null
+  grep -F 'Would run: bless --mount "'$ROOT_DIR'/tests/tmp/Arch Linux" --setBoot --nextonly' >/dev/null

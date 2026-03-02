@@ -14,7 +14,7 @@ Simple CLI and launcher app for macOS users who want a one-time restart into Asa
 One could, of course, just do this via simple CLI:
 
 ```bash
-sudo bless --mount "/Volumes/Your Linux Volume" --setBoot && sudo shutdown -r now
+sudo bless --mount "/Volumes/Your Linux Volume" --setBoot --nextonly && sudo shutdown -r now
 ```
 
 I built this small app because:

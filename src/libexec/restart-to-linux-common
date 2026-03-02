@@ -403,8 +403,8 @@ run_bless() {
   validate_target_path "$target_path"
 
   if [ "$dry_run" = "1" ]; then
-    debug_log "dry run: bless --mount $target_path --setBoot"
-    echo "Would run: bless --mount \"$target_path\" --setBoot"
+    debug_log "dry run: bless --mount $target_path --setBoot --nextonly"
+    echo "Would run: bless --mount \"$target_path\" --setBoot --nextonly"
     if [ "$bless_only" != "1" ]; then
       echo "Would then run: shutdown -r now"
     fi
@@ -412,8 +412,8 @@ run_bless() {
   fi
 
   require_root
-  debug_log "executing: bless --mount $target_path --setBoot"
-  bless --mount "$target_path" --setBoot
+  debug_log "executing: bless --mount $target_path --setBoot --nextonly"
+  bless --mount "$target_path" --setBoot --nextonly
 
   if [ "$bless_only" = "1" ]; then
     debug_log "bless completed without reboot"
