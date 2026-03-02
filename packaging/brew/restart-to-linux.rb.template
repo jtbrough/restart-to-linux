@@ -1,7 +1,7 @@
 class RestartToLinux < Formula
   desc "Restart macOS into Asahi Linux for one boot"
   homepage "https://github.com/jtbrough/restart-to-linux"
-  url "https://github.com/jtbrough/restart-to-linux/archive/refs/tags/v__VERSION__.tar.gz"
+  url "https://github.com/jtbrough/restart-to-linux/releases/download/v__VERSION__/restart-to-linux-__VERSION__.tar.gz"
   sha256 "__SHA256__"
   license "MIT"
 
