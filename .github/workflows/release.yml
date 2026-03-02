@@ -29,13 +29,35 @@ jobs:
         id: meta
         shell: bash
         run: |
-          version="$(cat VERSION)"
-          tag="v${version}"
+          bump_patch() {
+            local major minor patch
+            IFS=. read -r major minor patch <<<"$1"
+            [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ && "$patch" =~ ^[0-9]+$ ]] || {
+              echo "VERSION must be MAJOR.MINOR.PATCH" >&2
+              exit 1
+            }
+            printf '%s.%s.%s\n' "$major" "$minor" "$((patch + 1))"
+          }
 
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "tag ${tag} already exists" >&2
-            exit 1
+          version="$(cat VERSION)"
+          while git ls-remote --exit-code --tags origin "refs/tags/v${version}" >/dev/null 2>&1; do
+            version="$(bump_patch "$version")"
+          done
+
+          if [[ "$(cat VERSION)" != "$version" ]]; then
+            printf '%s\n' "$version" > VERSION
           fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if ! git diff --quiet -- VERSION; then
+            git add VERSION
+            git commit -m "chore: prepare release v${version}"
+            git push origin HEAD:main
+          fi
+
+          tag="v${version}"
 
           release_sha="$(git rev-parse HEAD)"
           archive_name="restart-to-linux-${version}.tar.gz"
