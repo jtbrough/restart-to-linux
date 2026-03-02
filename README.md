@@ -63,6 +63,8 @@ brew uninstall restart-to-linux
 
 `--install-app` installs `Restart to Linux.app` into `~/Applications` so it can be launched from Finder, Spotlight, or the Dock.
 
+After installation, Spotlight indexing may take a few minutes before the app appears in search results.
+
 ### Manual
 
 Install:

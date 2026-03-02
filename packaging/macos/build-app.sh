@@ -4,50 +4,31 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 APP_PATH=${APP_PATH:-"$ROOT_DIR/Restart to Linux.app"}
-APP_NAME="Restart to Linux"
 APP_CONTENTS="$APP_PATH/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 ICON_SOURCE="$ROOT_DIR/packaging/macos/AsahiLinux.icns"
+LAUNCHER_SOURCE="$ROOT_DIR/src/applescript/restart-to-linux-launcher.applescript"
 
 rm -rf "$APP_PATH"
+osacompile -o "$APP_PATH" "$LAUNCHER_SOURCE" >/dev/null
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
-
-cat >"$APP_CONTENTS/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleExecutable</key>
-  <string>restart-to-linux-app</string>
-  <key>CFBundleIdentifier</key>
-  <string>com.jtbrough.restart-to-linux</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleIconFile</key>
-  <string>AsahiLinux</string>
-  <key>CFBundleName</key>
-  <string>$APP_NAME</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>$(cat "$ROOT_DIR/VERSION")</string>
-  <key>CFBundleVersion</key>
-  <string>$(cat "$ROOT_DIR/VERSION")</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
-</dict>
-</plist>
-EOF
-
-printf 'APPL????' >"$APP_CONTENTS/PkgInfo"
-
 cp "$ROOT_DIR/src/applescript/restart-to-linux.applescript" "$APP_RESOURCES/restart-to-linux.applescript"
 [ -f "$ICON_SOURCE" ] && cp "$ICON_SOURCE" "$APP_RESOURCES/AsahiLinux.icns"
+if [ -f "$ICON_SOURCE" ]; then
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AsahiLinux" "$APP_CONTENTS/Info.plist" >/dev/null 2>&1 || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AsahiLinux" "$APP_CONTENTS/Info.plist" >/dev/null
+fi
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.jtbrough.restart-to-linux" "$APP_CONTENTS/Info.plist" >/dev/null 2>&1 || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.jtbrough.restart-to-linux" "$APP_CONTENTS/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(cat "$ROOT_DIR/VERSION")" "$APP_CONTENTS/Info.plist" >/dev/null 2>&1 || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $(cat "$ROOT_DIR/VERSION")" "$APP_CONTENTS/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(cat "$ROOT_DIR/VERSION")" "$APP_CONTENTS/Info.plist" >/dev/null 2>&1 || \
+  /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $(cat "$ROOT_DIR/VERSION")" "$APP_CONTENTS/Info.plist" >/dev/null
+/usr/libexec/PlistBuddy -c "Add :LSRequiresNativeExecution bool true" "$APP_CONTENTS/Info.plist" >/dev/null 2>&1 || \
+  /usr/libexec/PlistBuddy -c "Set :LSRequiresNativeExecution true" "$APP_CONTENTS/Info.plist" >/dev/null
 
-cat >"$APP_MACOS/restart-to-linux-app" <<'EOF'
+cat >"$APP_MACOS/restart-to-linux-launcher" <<'EOF'
 #!/bin/sh
 set -eu
 
@@ -142,9 +123,9 @@ command_string="$(shell_quote "$tool_path") --debug-log $(shell_quote "$DEBUG_LO
   -- "$command_string"
 EOF
 
-sed -i.bak "s|__REPO_FALLBACK__|$ROOT_DIR/src/bin/restart-to-linux|g" "$APP_MACOS/restart-to-linux-app"
-rm -f "$APP_MACOS/restart-to-linux-app.bak"
+sed -i.bak "s|__REPO_FALLBACK__|$ROOT_DIR/src/bin/restart-to-linux|g" "$APP_MACOS/restart-to-linux-launcher"
+rm -f "$APP_MACOS/restart-to-linux-launcher.bak"
 
-chmod +x "$APP_MACOS/restart-to-linux-app"
+chmod +x "$APP_MACOS/restart-to-linux-launcher"
 
 echo "Built app at $APP_PATH"

@@ -54,6 +54,15 @@ find_applescript_source() {
   printf '%s\n' ""
 }
 
+find_launcher_applescript_source() {
+  if [ -f "$PROJECT_ROOT/src/applescript/restart-to-linux-launcher.applescript" ]; then
+    printf '%s\n' "$PROJECT_ROOT/src/applescript/restart-to-linux-launcher.applescript"
+    return
+  fi
+
+  printf '%s\n' ""
+}
+
 find_icon_source() {
   if [ -f "$PROJECT_ROOT/packaging/macos/AsahiLinux.icns" ]; then
     printf '%s\n' "$PROJECT_ROOT/packaging/macos/AsahiLinux.icns"
@@ -292,9 +301,12 @@ run_list() {
 run_install_app() {
   ensure_macos
   need_command codesign
+  need_command osacompile
 
   applescript_source=$(find_applescript_source)
   [ -n "$applescript_source" ] || die "unable to locate app chooser source"
+  launcher_applescript_source=$(find_launcher_applescript_source)
+  [ -n "$launcher_applescript_source" ] || die "unable to locate app launcher source"
 
   icon_source=$(find_icon_source)
   install_path=$(installed_app_path)
@@ -307,50 +319,25 @@ run_install_app() {
 
   trap 'rm -rf "$temp_dir"' EXIT HUP INT TERM
 
+  osacompile -o "$temp_app" "$launcher_applescript_source" >/dev/null
   mkdir -p "$app_macos" "$app_resources"
 
-  cat >"$app_contents/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleDevelopmentRegion</key>
-  <string>en</string>
-  <key>CFBundleExecutable</key>
-  <string>restart-to-linux-app</string>
-  <key>CFBundleIdentifier</key>
-  <string>com.jtbrough.restart-to-linux</string>
-  <key>CFBundleInfoDictionaryVersion</key>
-  <string>6.0</string>
-  <key>CFBundleName</key>
-  <string>Restart to Linux</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>CFBundleShortVersionString</key>
-  <string>$VERSION</string>
-  <key>CFBundleVersion</key>
-  <string>$VERSION</string>
-EOF
-  if [ -n "$icon_source" ]; then
-    cat >>"$app_contents/Info.plist" <<EOF
-  <key>CFBundleIconFile</key>
-  <string>AsahiLinux</string>
-EOF
-  fi
-  cat >>"$app_contents/Info.plist" <<EOF
-  <key>LSMinimumSystemVersion</key>
-  <string>13.0</string>
-</dict>
-</plist>
-EOF
-
-  printf 'APPL????' >"$app_contents/PkgInfo"
   cp "$applescript_source" "$app_resources/restart-to-linux.applescript"
   if [ -n "$icon_source" ]; then
     cp "$icon_source" "$app_resources/AsahiLinux.icns"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile AsahiLinux" "$app_contents/Info.plist" >/dev/null 2>&1 || \
+      /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string AsahiLinux" "$app_contents/Info.plist" >/dev/null
   fi
+  /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.jtbrough.restart-to-linux" "$app_contents/Info.plist" >/dev/null 2>&1 || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.jtbrough.restart-to-linux" "$app_contents/Info.plist" >/dev/null
+  /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$app_contents/Info.plist" >/dev/null 2>&1 || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $VERSION" "$app_contents/Info.plist" >/dev/null
+  /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$app_contents/Info.plist" >/dev/null 2>&1 || \
+    /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $VERSION" "$app_contents/Info.plist" >/dev/null
+  /usr/libexec/PlistBuddy -c "Add :LSRequiresNativeExecution bool true" "$app_contents/Info.plist" >/dev/null 2>&1 || \
+    /usr/libexec/PlistBuddy -c "Set :LSRequiresNativeExecution true" "$app_contents/Info.plist" >/dev/null
 
-  cat >"$app_macos/restart-to-linux-app" <<'EOF'
+  cat >"$app_macos/restart-to-linux-launcher" <<'EOF'
 #!/bin/sh
 set -eu
 
@@ -445,9 +432,9 @@ command_string="$(shell_quote "$tool_path") --debug-log $(shell_quote "$DEBUG_LO
   -- "$command_string"
 EOF
 
-  sed -i.bak "s|__REPO_FALLBACK__|$repo_fallback|g" "$app_macos/restart-to-linux-app"
-  rm -f "$app_macos/restart-to-linux-app.bak"
-  chmod +x "$app_macos/restart-to-linux-app"
+  sed -i.bak "s|__REPO_FALLBACK__|$repo_fallback|g" "$app_macos/restart-to-linux-launcher"
+  rm -f "$app_macos/restart-to-linux-launcher.bak"
+  chmod +x "$app_macos/restart-to-linux-launcher"
 
   debug_log "codesigning app bundle at $temp_app"
   codesign --force --deep --sign - "$temp_app" >/dev/null 2>&1 || die "codesign failed for app bundle"
@@ -459,6 +446,7 @@ EOF
   rm -rf "$temp_dir"
   trap - EXIT HUP INT TERM
   echo "Installed app: $install_path"
+  echo "Spotlight indexing may take a few minutes before the app appears in search results."
 }
 
 run_uninstall_app() {
